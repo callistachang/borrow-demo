@@ -1,8 +1,12 @@
 // Both phones and sketches use this same small WebSocket connection.
 // onMessage is an ordinary function, called whenever something arrives.
-export function connect(session, registration, onMessage) {
-  const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-  const socket = new WebSocket(`${protocol}//${location.host}/ws/${encodeURIComponent(session)}`);
+export function connect(session, registration, onMessage, { relay = location.origin } = {}) {
+  const endpoint = new URL(`/ws/${encodeURIComponent(session)}`, relay);
+  if (!["http:", "https:", "ws:", "wss:"].includes(endpoint.protocol)) {
+    throw new Error("Use an HTTP(S) or WebSocket relay URL.");
+  }
+  endpoint.protocol = ["https:", "wss:"].includes(endpoint.protocol) ? "wss:" : "ws:";
+  const socket = new WebSocket(endpoint.href);
   let lastMessage = Date.now();
   let closed = false;
 
@@ -39,7 +43,7 @@ export function connect(session, registration, onMessage) {
 }
 
 // MVP: one input per sketch. The returned input is updated as messages arrive.
-export function createBorrow({ session, name }) {
+export function createBorrow({ session, name, relay }) {
   let input;
   let clientId;
   const borrow = {
@@ -69,7 +73,7 @@ export function createBorrow({ session, name }) {
           if (borrow.status === "Connected") borrow.status = "Disconnected. Reload to reconnect.";
         }
         borrow.onChange();
-      });
+      }, { relay });
     },
   };
   return borrow;

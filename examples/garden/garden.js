@@ -1,11 +1,10 @@
-import { createBorrow } from "/sdk/index.js";
-import { showBinding } from "/examples/status.js";
+import p5 from "p5";
+import { createBorrow } from "@borrow/sdk";
+import { install, session, relay } from "./installation.js";
 
-const session = new URLSearchParams(location.search).get("session");
-const borrow = createBorrow({ session, name: "Living Garden" });
-const wind = borrow.stick2d("wind", { label: "Blow the particles around using your touchpad." });
-showBinding(borrow, wind);
-if (session) borrow.connect();
+const borrow = createBorrow({ session, relay, name: "Living Garden" });
+const wind = borrow.stick2d("wind", { label: "Lend movement to stir the garden’s wind." });
+install(borrow, wind);
 
 new p5(p => {
   let seeds = [];

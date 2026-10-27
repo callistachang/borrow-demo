@@ -2,11 +2,18 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Kinetic Ribbon — Borrow</title><link rel="stylesheet" href="/assets/style.css">
-  <script src="/lib/p5.js" defer></script><script type="module" src="./ribbon.js"></script>
+  <title>Kinetic Ribbon</title><link rel="stylesheet" href="./style.css">
+  <script type="module" src="./ribbon.js"></script>
 </head>
-<body class="sketch">
-  <header><h1>Kinetic Ribbon</h1><p>Give a wandering wave a new shape.</p></header>
-  <div class="binding"><span>Bend · stick2d</span><strong id="status">Start a session to lend</strong></div>
+<body class="ribbon">
+  <button id="about-toggle" class="about-toggle" aria-label="About Kinetic Ribbon" aria-expanded="false" aria-controls="info">i</button>
+  <aside id="info" class="about" hidden>
+    <h1>Kinetic Ribbon</h1>
+    <p>A wandering wave. A little movement gives it a different shape.</p>
+    <p class="binding">Bend · stick2d<br><span id="status" role="status">Ambient · no session connected</span></p>
+    <a id="join" target="_blank" rel="noopener" hidden>Lend to this work</a>
+    <button id="fullscreen">Enter fullscreen</button>
+    <small>F — fullscreen · H — show or hide this note</small>
+  </aside>
 </body>
 </html>

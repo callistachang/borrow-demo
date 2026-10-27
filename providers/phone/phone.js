@@ -11,21 +11,49 @@ let connected = false;
 let pointer = null;
 
 const session = location.pathname.split("/")[2];
-const connection = connect(session, { role: "provider" }, message => {
-  if (message.type === "hello") {
-    clientId = message.id;
-    connected = true;
-    document.getElementById("connection").textContent = "Connected";
-  }
-  if (message.type === "snapshot") slots = message.slots;
-  if (message.type === "error") feedback.textContent = message.message;
-  if (message.type === "disconnected") {
-    connected = false;
-    slots = [];
-    document.getElementById("connection").textContent = "Disconnected. Reload to reconnect.";
-  }
-  if (message.type !== "pong") render();
-});
+let connection;
+if (!session) {
+  document.getElementById("welcome").hidden = false;
+  const start = document.getElementById("start");
+  start.onclick = async () => {
+    start.disabled = true;
+    try {
+      const response = await fetch("/api/sessions", { method: "POST" });
+      if (!response.ok) throw new Error("Could not create a session. Try again.");
+      location.href = (await response.json()).join;
+    } catch (error) {
+      feedback.textContent = error.message;
+      start.disabled = false;
+    }
+  };
+} else {
+  document.getElementById("connection").textContent = "Connecting…";
+  document.getElementById("browse").hidden = false;
+  const joinURL = `${location.origin}/join/${encodeURIComponent(session)}`;
+  const qr = qrcode(0, "M");
+  qr.addData(joinURL);
+  qr.make();
+  document.getElementById("qr").innerHTML = qr.createSvgTag({ cellSize: 4, margin: 16, scalable: true });
+  document.getElementById("join-link").href = joinURL;
+  document.getElementById("session-id").textContent = session;
+  document.getElementById("relay-url").textContent = location.origin;
+  document.getElementById("share").hidden = false;
+  connection = connect(session, { role: "provider" }, message => {
+    if (message.type === "hello") {
+      clientId = message.id;
+      connected = true;
+      document.getElementById("connection").textContent = "Connected";
+    }
+    if (message.type === "snapshot") slots = message.slots;
+    if (message.type === "error") feedback.textContent = message.message;
+    if (message.type === "disconnected") {
+      connected = false;
+      slots = [];
+      document.getElementById("connection").textContent = "Disconnected. Reload to reconnect.";
+    }
+    if (message.type !== "pong") render();
+  });
+}
 
 function render() {
   loan = slots.find(slot => slot.lender && slot.lender.id === clientId);

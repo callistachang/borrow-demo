@@ -4,15 +4,27 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Borrow — phone</title>
-  <link rel="stylesheet" href="/assets/style.css">
+  <link rel="stylesheet" href="/providers/phone/style.css">
+  <script src="/lib/qrcode.js" defer></script>
   <script type="module" src="/providers/phone/phone.js"></script>
 </head>
 <body class="phone">
   <h1>Borrow</h1>
-  <p id="connection" role="status">Connecting…</p>
+  <p id="connection" role="status"></p>
   <p id="feedback" role="alert"></p>
   <main>
-    <section id="browse">
+    <section id="welcome" hidden>
+      <p>Your phone has hardware that other people’s projects can borrow.</p>
+      <button id="start">Create a lending session</button>
+    </section>
+    <details id="share" hidden>
+      <summary>Invite a phone / session details</summary>
+      <div id="qr" aria-label="QR code to join this session"></div>
+      <a id="join-link">Open this session</a>
+      <p>Session: <code id="session-id"></code></p>
+      <p>Relay: <code id="relay-url"></code></p>
+    </details>
+    <section id="browse" hidden>
       <p>Choose a project to lend your touchpad to.</p>
       <label>Your name (optional) <input id="nickname" maxlength="60" placeholder="Alice’s phone" autocomplete="nickname"></label>
       <div id="requests"></div>

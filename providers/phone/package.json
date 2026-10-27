@@ -1,0 +1,7 @@
+{
+  "name": "borrow-phone-provider",
+  "private": true,
+  "dependencies": {
+    "qrcode-generator": "1.4.4"
+  }
+}

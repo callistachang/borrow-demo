@@ -1,11 +1,10 @@
-import { createBorrow } from "/sdk/index.js";
-import { showBinding } from "/examples/status.js";
+import p5 from "p5";
+import { createBorrow } from "@borrow/sdk";
+import { install, session, relay } from "./installation.js";
 
-const session = new URLSearchParams(location.search).get("session");
-const borrow = createBorrow({ session, name: "Kinetic Ribbon" });
-const bend = borrow.stick2d("bend", { label: "Shape the ribbon using your touchpad." });
-showBinding(borrow, bend);
-if (session) borrow.connect();
+const borrow = createBorrow({ session, relay, name: "Kinetic Ribbon" });
+const bend = borrow.stick2d("bend", { label: "Lend movement to shape the ribbon." });
+install(borrow, bend);
 
 new p5(p => {
   let time = 0;

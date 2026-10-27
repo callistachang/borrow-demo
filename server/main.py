@@ -4,9 +4,8 @@ import asyncio
 import secrets
 from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
 
 app = FastAPI()
 sessions = {}
@@ -109,7 +108,7 @@ async def handle(room, client_id, message):
 async def create_session():
     session = secrets.token_urlsafe(12)
     sessions[session] = {"clients": {}, "slots": {}, "lock": asyncio.Lock()}
-    return {"session": session, "projector": f"/session/{session}"}
+    return {"session": session, "join": f"/join/{session}"}
 
 
 @app.get("/api/sessions/{session}")
@@ -164,9 +163,8 @@ async def health():
 
 
 @app.get("/")
-@app.get("/session/{session}")
-async def projector():
-    return FileResponse(ROOT / "web" / "index.html")
+async def provider_home():
+    return FileResponse(ROOT / "providers" / "phone" / "index.html")
 
 
 @app.get("/join/{session}")
@@ -174,18 +172,19 @@ async def phone():
     return FileResponse(ROOT / "providers" / "phone" / "index.html")
 
 
-# npm installs these browser scripts; only these two files are served.
-@app.get("/lib/p5.js")
-async def p5_library():
-    return FileResponse(ROOT / "node_modules" / "p5" / "lib" / "p5.min.js")
-
-
+# The generic phone provider owns its browser dependency.
 @app.get("/lib/qrcode.js")
 async def qr_library():
-    return FileResponse(ROOT / "node_modules" / "qrcode-generator" / "qrcode.js")
+    return FileResponse(ROOT / "providers" / "phone" / "node_modules" / "qrcode-generator" / "qrcode.js")
 
 
-app.mount("/assets", StaticFiles(directory=ROOT / "web"))
-app.mount("/sdk", StaticFiles(directory=ROOT / "sdk" / "js"))
-app.mount("/providers", StaticFiles(directory=ROOT / "providers"))
-app.mount("/examples", StaticFiles(directory=ROOT / "examples", html=True))
+@app.get("/sdk/index.js")
+async def phone_sdk():
+    return FileResponse(ROOT / "sdk" / "js" / "index.js")
+
+
+@app.get("/providers/phone/{asset}")
+async def phone_asset(asset: str):
+    if asset not in ("phone.js", "style.css"):
+        raise HTTPException(status_code=404)
+    return FileResponse(ROOT / "providers" / "phone" / asset)

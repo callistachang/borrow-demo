@@ -1,6 +1,6 @@
 FROM node:24-bookworm-slim AS browser-dependencies
 WORKDIR /dependencies
-COPY package.json package-lock.json ./
+COPY providers/phone/package.json providers/phone/package-lock.json ./
 RUN npm ci --omit=dev
 
 FROM python:3.12-slim
@@ -13,11 +13,9 @@ COPY server/pyproject.toml server/uv.lock ./
 RUN uv sync --locked --no-dev --no-install-project
 
 COPY server/main.py ./
-COPY web /app/web
 COPY sdk /app/sdk
 COPY providers /app/providers
-COPY examples /app/examples
-COPY --from=browser-dependencies /dependencies/node_modules /app/node_modules
+COPY --from=browser-dependencies /dependencies/node_modules /app/providers/phone/node_modules
 
 EXPOSE 8000
 
