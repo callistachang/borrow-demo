@@ -1,190 +1,263 @@
-"""One process, in-memory sessions, one stick2d request per consumer."""
-
 import asyncio
+import math
 import secrets
-from pathlib import Path
+from dataclasses import dataclass, field
+from typing import Literal
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
 app = FastAPI()
-sessions = {}
-ROOT = Path(__file__).resolve().parent.parent
-HEARTBEAT_TIMEOUT = 15
+
+Kind = Literal["axis1d", "button"]
+KINDS = {"axis1d", "button"}
 
 
-async def send(socket, message):
-    # A disconnected phone must not block everyone else's updates.
-    try:
-        await asyncio.wait_for(socket.send_json(message), timeout=1)
-    except (WebSocketDisconnect, RuntimeError, TimeoutError):
-        pass
+@dataclass
+class Host:
+    id: str
+    name: str
+    ws: WebSocket
+    cap_reqs: dict[str, Kind] = field(default_factory=dict)
+    send_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
-async def broadcast(room):
-    message = {"type": "snapshot", "slots": list(room["slots"].values())}
-    for client in room["clients"].values():
-        await send(client["socket"], message)
+@dataclass
+class Provider:
+    id: str
+    name: str
+    ws: WebSocket
+    caps: dict[str, Kind] = field(default_factory=dict)
+    values: dict[str, float | bool] = field(default_factory=dict)
+    send_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
-async def neutral(room, slot):
-    consumer = room["clients"][slot["id"]]
-    await send(consumer["socket"], {"type": "value", "value": {"x": 0, "y": 0}})
+Peer = Host | Provider
+hosts: dict[str, Host] = {}
+providers: dict[str, Provider] = {}
+bindings: dict[tuple[str, str], tuple[str, str]] = {}
+# (host_id, slot) -> (provider_id, capability)
 
 
-def text(value, limit=60):
-    if not isinstance(value, str) or not value.strip() or len(value) > limit:
-        raise ValueError(f"Use text between 1 and {limit} characters.")
+def required_string(value: object) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("Expected nonempty string")
     return value.strip()
 
 
-async def handle(room, client_id, message):
-    client = room["clients"][client_id]
-    kind = message.get("type")
+def default(kind: Kind) -> float | bool:
+    return False if kind == "button" else 0.0
 
-    if kind == "ping":
-        await send(client["socket"], {"type": "pong"})
-        return
 
-    if kind == "register":
-        role = message.get("role")
-        if client["role"] is not None or role not in ("consumer", "provider"):
-            raise ValueError("Register once, as a consumer or provider.")
-        if role == "consumer":
-            request = message.get("slot")
-            if not isinstance(request, dict) or request.get("capability") != "stick2d":
-                raise ValueError("Declare a stick2d request.")
-            room["slots"][client_id] = {
-                "id": client_id,
-                "application": text(message.get("name")),
-                "key": text(request.get("key")),
-                "label": text(request.get("label"), 160),
-                "capability": "stick2d",
-                "lender": None,
+def checked_value(kind: Kind, value: object) -> float | bool:
+    if kind == "button":
+        if type(value) is not bool:
+            raise ValueError("Button value must be true or false")
+        return value
+    if type(value) not in (int, float) or not math.isfinite(
+        value  # ty: ignore[invalid-argument-type]
+    ):
+        raise ValueError("Axis value must be a finite number")
+    return max(-1.0, min(1.0, float(value)))  # ty: ignore[invalid-argument-type]
+
+
+def snapshot() -> dict:
+    return {
+        "op": "state",
+        "hosts": [
+            {"id": host.id, "name": host.name, "slots": host.cap_reqs}
+            for host in hosts.values()
+        ],
+        "providers": [
+            {
+                "id": provider.id,
+                "name": provider.name,
+                "capabilities": provider.caps,
             }
-        client["role"] = role
-        await broadcast(room)
-        return
-
-    if client["role"] != "provider":
-        raise ValueError("Only providers can lend or publish input.")
-    slot_id = message.get("slot")
-    slot = room["slots"].get(slot_id) if isinstance(slot_id, str) else None
-    if slot is None:
-        raise ValueError("That request is no longer available.")
-
-    if kind == "claim":
-        if slot["lender"] is not None:
-            raise ValueError("Someone is already lending here. Wait for them to release.")
-        for existing in room["slots"].values():
-            if existing["lender"] and existing["lender"]["id"] == client_id:
-                raise ValueError("Release your current loan first.")
-        slot["lender"] = {"id": client_id, "name": text(message.get("name", "A phone"))}
-        await neutral(room, slot)
-        await broadcast(room)
-        return
-
-    if not slot["lender"] or slot["lender"]["id"] != client_id:
-        raise ValueError("You are not lending to this request.")
-    if kind == "release":
-        slot["lender"] = None
-        await neutral(room, slot)
-        await broadcast(room)
-    elif kind == "value":
-        value = message.get("value")
-        if not isinstance(value, dict):
-            raise ValueError("Send x and y values.")
-        for axis in ("x", "y"):
-            number = value.get(axis)
-            if type(number) not in (int, float) or not -1 <= number <= 1:
-                raise ValueError("x and y must be numbers between -1 and 1.")
-        consumer = room["clients"][slot_id]
-        await send(consumer["socket"], {"type": "value", "value": {"x": value["x"], "y": value["y"]}})
-    else:
-        raise ValueError("Unknown message type.")
+            for provider in providers.values()
+        ],
+        "bindings": [
+            {
+                "host": host_id,
+                "slot": slot,
+                "provider": provider_id,
+                "capability": capability,
+            }
+            for (host_id, slot), (provider_id, capability) in bindings.items()
+        ],
+    }
 
 
-@app.post("/api/sessions", status_code=201)
-async def create_session():
-    session = secrets.token_urlsafe(12)
-    sessions[session] = {"clients": {}, "slots": {}, "lock": asyncio.Lock()}
-    return {"session": session, "join": f"/join/{session}"}
+async def send(peer: Peer, message: dict):
+    # Broadcasts and value updates can arrive concurrently.
+    async with peer.send_lock:
+        await peer.ws.send_json(message)
 
 
-@app.get("/api/sessions/{session}")
-async def session_info(session: str):
-    return {"exists": session in sessions}
-
-
-@app.websocket("/ws/{session}")
-async def websocket_endpoint(socket: WebSocket, session: str):
-    await socket.accept()
-    if session not in sessions:
-        await send(socket, {"type": "error", "message": "Session ended. Scan a new QR code."})
-        await socket.close()
-        return
-
-    room = sessions[session]
-    client_id = secrets.token_urlsafe(8)
-    async with room["lock"]:
-        room["clients"][client_id] = {"socket": socket, "role": None}
-        await send(socket, {"type": "hello", "id": client_id})
+async def try_send(peer: Peer, message: dict):
     try:
+        await send(peer, message)
+    except (WebSocketDisconnect, RuntimeError, OSError):
+        pass  # The socket's handler will remove it when disconnected.
+
+
+async def broadcast():
+    state = snapshot()
+    await asyncio.gather(
+        *(try_send(peer, state) for peer in [*hosts.values(), *providers.values()])
+    )
+
+
+def make_binding(actor: Peer, message: dict):
+    host_id = required_string(message.get("host"))
+    provider_id = required_string(message.get("provider"))
+    slot = required_string(message.get("slot"))
+    capability = required_string(message.get("capability"))
+
+    host = hosts.get(host_id)
+    provider = providers.get(provider_id)
+    if host is None or provider is None:
+        raise ValueError("Unknown host or provider")
+    if actor.id not in (host_id, provider_id):
+        raise ValueError("Only the host or provider may request a binding")
+    if slot not in host.cap_reqs or capability not in provider.caps:
+        raise ValueError("Unknown slot or capability")
+    if host.cap_reqs[slot] != provider.caps[capability]:
+        raise ValueError("Capability types do not match")
+
+    target = (host_id, slot)
+    source = (provider_id, capability)
+    if target in bindings and bindings[target] != source:
+        raise ValueError("Slot is occupied")
+    if source in bindings.values() and bindings.get(target) != source:
+        raise ValueError("Capability is already bound")
+
+    bindings[target] = source
+    return host, slot, provider.values[capability]
+
+
+async def handle(peer: Peer, message: dict):
+    op = message.get("op")
+
+    if op == "declare":
+        name = required_string(message.get("name"))
+        kind = message.get("kind")
+        if kind not in KINDS:
+            raise ValueError("Kind must be axis1d or button")
+        declarations = peer.cap_reqs if isinstance(peer, Host) else peer.caps
+        if name in declarations and declarations[name] != kind:
+            raise ValueError("Cannot change a declared capability type")
+        declarations[name] = kind
+        if isinstance(peer, Provider):
+            peer.values.setdefault(name, default(kind))
+        await broadcast()
+
+    # Request a snapshot of the current Borrow-Server state
+    elif op == "list":
+        await send(peer, snapshot())
+
+    elif op == "bind":
+        host, slot, value = make_binding(peer, message)
+        await broadcast()
+        await try_send(host, {"op": "input", "slot": slot, "value": value})
+
+    elif op == "unbind":
+        if not isinstance(peer, Host):
+            raise ValueError("Only hosts can unbind")
+        slot = required_string(message.get("slot"))
+        if (peer.id, slot) in bindings:
+            del bindings[(peer.id, slot)]
+            await try_send(
+                peer,
+                {"op": "input", "slot": slot, "value": default(peer.cap_reqs[slot])},
+            )
+            await broadcast()
+
+    elif op == "value":
+        if not isinstance(peer, Provider):
+            raise ValueError("Only providers can send values")
+        capability = required_string(message.get("capability"))
+        if capability not in peer.caps:
+            raise ValueError("Unknown capability")
+        value = checked_value(peer.caps[capability], message.get("value"))
+        peer.values[capability] = value
+        for (host_id, slot), source in list(bindings.items()):
+            if source == (peer.id, capability) and host_id in hosts:
+                await try_send(
+                    hosts[host_id], {"op": "input", "slot": slot, "value": value}
+                )
+
+    else:
+        raise ValueError("Unknown operation")
+
+
+@app.websocket("/ws")
+async def websocket_endpoint(ws: WebSocket):
+    await ws.accept()
+    peer: Peer | None = None
+
+    try:
+        hello = await ws.receive_json()
+        if not isinstance(hello, dict) or hello.get("op") != "hello":
+            await ws.close(code=1008)
+            return
+        role = hello.get("role")
+        if role not in ("host", "provider"):
+            await ws.close(code=1008)
+            return
+        name = required_string(hello.get("name"))
+        peer_id = secrets.token_urlsafe(8)
+        peer = (
+            Host(peer_id, name, ws) if role == "host" else Provider(peer_id, name, ws)
+        )
+
+        await send(peer, {"op": "welcome", "id": peer_id})
+        if isinstance(peer, Host):
+            hosts[peer_id] = peer
+        else:
+            providers[peer_id] = peer
+        await broadcast()
+
         while True:
-            # Browsers send a ping every four seconds, even when nobody is touching.
-            message = await asyncio.wait_for(socket.receive_json(), HEARTBEAT_TIMEOUT)
-            async with room["lock"]:
-                try:
-                    if not isinstance(message, dict):
-                        raise ValueError("Send a JSON object.")
-                    await handle(room, client_id, message)
-                except ValueError as error:
-                    await send(socket, {"type": "error", "message": str(error)})
-    except (WebSocketDisconnect, TimeoutError, ValueError):
+            message = await ws.receive_json()
+            try:
+                if not isinstance(message, dict):
+                    raise ValueError("Expected JSON object")
+                await handle(peer, message)
+            except (ValueError, TypeError) as exc:
+                await send(peer, {"op": "error", "message": str(exc)})
+
+    except (WebSocketDisconnect, RuntimeError, OSError, ValueError, TypeError):
         pass
+
     finally:
-        async with room["lock"]:
-            del room["clients"][client_id]
-            room["slots"].pop(client_id, None)
-            for slot in room["slots"].values():
-                if slot["lender"] and slot["lender"]["id"] == client_id:
-                    slot["lender"] = None
-                    await neutral(room, slot)
-            await broadcast(room)
-        try:
-            await socket.close()
-        except RuntimeError:
-            pass
+        if peer is not None:
+            if isinstance(peer, Host):
+                hosts.pop(peer.id, None)
+            else:
+                providers.pop(peer.id, None)
+
+            vacated = [
+                (host_id, slot)
+                for (host_id, slot), (provider_id, _) in bindings.items()
+                if host_id == peer.id or provider_id == peer.id
+            ]
+            for target in vacated:
+                if bindings.pop(target, None) is None:
+                    continue
+                # Since the provider disconnected, return host input to default value.
+                if target[0] in hosts:
+                    host = hosts[target[0]]
+                    await try_send(
+                        host,
+                        {
+                            "op": "input",
+                            "slot": target[1],
+                            "value": default(host.cap_reqs[target[1]]),
+                        },
+                    )
+            await broadcast()
 
 
 @app.get("/health")
-async def health():
-    return {"status": "ok"}
-
-
-@app.get("/")
-async def provider_home():
-    return FileResponse(ROOT / "providers" / "phone" / "index.html")
-
-
-@app.get("/join/{session}")
-async def phone():
-    return FileResponse(ROOT / "providers" / "phone" / "index.html")
-
-
-# The generic phone provider owns its browser dependency.
-@app.get("/lib/qrcode.js")
-async def qr_library():
-    return FileResponse(ROOT / "providers" / "phone" / "node_modules" / "qrcode-generator" / "qrcode.js")
-
-
-@app.get("/sdk/index.js")
-async def phone_sdk():
-    return FileResponse(ROOT / "sdk" / "js" / "index.js")
-
-
-@app.get("/providers/phone/{asset}")
-async def phone_asset(asset: str):
-    if asset not in ("phone.js", "style.css"):
-        raise HTTPException(status_code=404)
-    return FileResponse(ROOT / "providers" / "phone" / asset)
+def health():
+    return {"ok": True}

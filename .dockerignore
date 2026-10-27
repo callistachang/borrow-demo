@@ -1,9 +1,0 @@
-.git
-private
-**/.venv
-**/__pycache__
-**/.pytest_cache
-**/node_modules
-test-results
-playwright-report
-.env*

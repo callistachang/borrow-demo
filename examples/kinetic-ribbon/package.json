@@ -1,11 +1,11 @@
 {
-  "name": "borrow-ribbon",
+  "name": "borrow-kinetic-ribbon",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1 --port 8002 --strictPort",
+    "dev": "vite --host 127.0.0.1 --port 12345 --strictPort",
     "build": "vite build",
-    "preview": "vite preview --host 127.0.0.1 --port 8002 --strictPort"
+    "preview": "vite preview --host 127.0.0.1 --port 12345 --strictPort"
   },
   "dependencies": {
     "@borrow/sdk": "file:../../sdk/js",
