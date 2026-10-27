@@ -1,0 +1,34 @@
+/* Shared layout only. Each sketch draws its own visuals. */
+body { font: 16px system-ui, sans-serif; color: #213547; background: #f5f7f8; margin: 24px auto; padding: 0 20px; max-width: 1400px; }
+h1, h2 { margin: 12px 0; }
+p { line-height: 1.5; }
+button, input { font: inherit; padding: 10px 14px; }
+button { cursor: pointer; }
+button:disabled { cursor: default; }
+a { color: #235e8b; }
+[hidden] { display: none !important; }
+:focus-visible { outline: 3px solid #478cb9; outline-offset: 3px; }
+header { display: flex; justify-content: space-between; align-items: center; gap: 24px; margin-bottom: 24px; }
+#join { text-align: center; }
+#qr svg { display: block; width: 160px; height: 160px; margin: 0 auto 8px; }
+.experiences { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+iframe { width: 100%; height: 440px; border: 0; }
+.phone { max-width: 420px; }
+.phone label, .phone input { display: block; }
+.phone input { box-sizing: border-box; width: 100%; margin: 8px 0 24px; }
+article { border-top: 1px solid #bbc7ce; padding: 12px 0 24px; }
+.phone button { width: 100%; }
+#feedback { color: #a52c23; }
+#touchpad { position: relative; height: min(360px, 45vh); background: #deebf2; border: 1px solid #7092a4; touch-action: none; user-select: none; }
+#puck { position: absolute; left: 50%; top: 50%; width: 32px; height: 32px; border-radius: 50%; background: #235e8b; transform: translate(-50%, -50%); pointer-events: none; }
+.sketch { margin: 0; padding: 0; max-width: none; overflow: hidden; color: white; background: #102d3a; }
+.sketch header { position: absolute; top: 16px; left: 20px; display: block; pointer-events: none; }
+.sketch h1 { font-size: 24px; }
+.sketch header p { margin: 0; }
+.binding { position: absolute; bottom: 18px; left: 20px; right: 20px; font-size: 14px; }
+.binding strong { display: block; margin-top: 6px; font-weight: normal; }
+canvas { display: block; }
+@media (max-width: 700px) {
+  header { align-items: flex-start; flex-wrap: wrap; }
+  .experiences { grid-template-columns: 1fr; }
+}

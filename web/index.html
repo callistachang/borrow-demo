@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Borrow</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <script src="/lib/qrcode.js" defer></script>
+  <script type="module" src="/assets/projector.js"></script>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Borrow</h1>
+      <p>Lend your phone’s touchpad to either project.</p>
+      <button id="start">Start a session</button>
+      <p id="message" role="status"></p>
+    </div>
+    <div id="join" hidden>
+      <div id="qr" aria-label="QR code to join this session"></div>
+      <a id="join-link">Scan to join, or open on this device</a>
+    </div>
+  </header>
+  <main class="experiences">
+    <iframe title="Living Garden" id="garden" src="/examples/garden/"></iframe>
+    <iframe title="Kinetic Ribbon" id="ribbon" src="/examples/ribbon/"></iframe>
+  </main>
+</body>
+</html>

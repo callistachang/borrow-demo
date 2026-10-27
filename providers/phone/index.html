@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Borrow — phone</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <script type="module" src="/providers/phone/phone.js"></script>
+</head>
+<body class="phone">
+  <h1>Borrow</h1>
+  <p id="connection" role="status">Connecting…</p>
+  <p id="feedback" role="alert"></p>
+  <main>
+    <section id="browse">
+      <p>Choose a project to lend your touchpad to.</p>
+      <label>Your name (optional) <input id="nickname" maxlength="60" placeholder="Alice’s phone" autocomplete="nickname"></label>
+      <div id="requests"></div>
+      <p id="empty" hidden>Waiting for projects to join…</p>
+    </section>
+    <section id="control" hidden>
+      <h2 id="loan-name"></h2>
+      <p id="loan-label"></p>
+      <div id="touchpad" tabindex="0" role="group" aria-label="Touchpad: drag or use arrow keys to control">
+        <span id="puck"></span>
+      </div>
+      <p>Drag to control. Lift your finger to return to center.</p>
+      <button id="release">Release my touchpad</button>
+    </section>
+  </main>
+  <template id="request-template">
+    <article><h2></h2><p></p><button></button></article>
+  </template>
+</body>
+</html>

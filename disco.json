@@ -9,7 +9,7 @@
   "images": {
     "borrow-server": {
       "dockerfile": "server/Dockerfile",
-      "context": "server"
+      "context": "."
     }
   }
 }
