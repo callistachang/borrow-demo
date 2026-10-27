@@ -15,17 +15,24 @@ colors.onPress(() => {
 
 new p5((p) => {
   let time = 0;
+  const displayedBend = { x: 0, y: 0 };
+  const bendResponseMs = 60;
   const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
   p.setup = () => {
     p.createCanvas(innerWidth, innerHeight);
     p.pixelDensity(Math.min(devicePixelRatio, 2));
-    p.frameRate(30);
+    p.frameRate(60);
   };
   p.draw = () => {
     p.background("#233451");
-    time += reducedMotion ? 0 : 0.018;
-    const frequency = 1.5 + bend.value.x * 0.9;
-    const amplitude = p.height * (0.1 + (bend.value.y + 1) * 0.055);
+    time += reducedMotion ? 0 : p.deltaTime * 0.00054;
+    const target = bend.value;
+    // Ease between input samples at the same rate regardless of drawing FPS.
+    const blend = 1 - Math.exp(-p.deltaTime / bendResponseMs);
+    displayedBend.x += (target.x - displayedBend.x) * blend;
+    displayedBend.y += (target.y - displayedBend.y) * blend;
+    const frequency = 1.5 + displayedBend.x * 0.9;
+    const amplitude = p.height * (0.1 + (displayedBend.y + 1) * 0.055);
     p.noFill();
     p.strokeWeight(1.5);
     for (let strand = 0; strand < 24; strand++) {

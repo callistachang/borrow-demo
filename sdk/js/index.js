@@ -262,7 +262,8 @@ class Host extends Connection {
     for (const [slot, input] of this._inputs) {
       const binding = bindings.find((b) => b.slot === slot);
       const row = el("div", "", "borrow-slot");
-      const heading = el("div", `${slot} [${input.kind}]`, "borrow-slot-name");
+      const heading = el("div", slot, "borrow-slot-name");
+      heading.append(el("span", input.kind, "borrow-kind"));
       row.append(heading);
       if (binding) {
         const provider = this.state.providers.find(
@@ -276,10 +277,10 @@ class Host extends Connection {
           ),
         );
         const button = el("button", "Disconnect");
+        button.setAttribute("aria-label", `Disconnect ${slot}`);
         button.addEventListener("click", () => this.unbind(slot));
         row.append(button);
       } else {
-        row.append(el("div", "Empty", "borrow-muted"));
         const choices = [];
         const occupied = new Set(
           this.state.bindings.map((b) => `${b.provider}/${b.capability}`),
@@ -298,6 +299,7 @@ class Host extends Connection {
         }
         if (choices.length) {
           const select = document.createElement("select");
+          select.setAttribute("aria-label", `Control for ${slot}`);
           for (const [index, choice] of choices.entries()) {
             const option = document.createElement("option");
             option.value = String(index);
@@ -305,6 +307,7 @@ class Host extends Connection {
             select.append(option);
           }
           const button = el("button", "Bind");
+          button.setAttribute("aria-label", `Bind ${slot}`);
           button.addEventListener("click", () => {
             const choice = choices[Number(select.value)];
             if (choice) this.bind(slot, choice.provider.id, choice.capability);
@@ -312,7 +315,7 @@ class Host extends Connection {
           row.append(select, button);
         } else {
           row.append(
-            el("div", "No available compatible devices", "borrow-muted"),
+            el("div", "No compatible controls available", "borrow-muted"),
           );
         }
       }
@@ -340,7 +343,7 @@ class Host extends Connection {
       const instructions = el("div", "");
       instructions.append(
         link,
-        el("div", "Scan from one or more devices, then assign their controls above.", "borrow-muted"),
+        el("div", "Scan a device, then assign its controls above. Multiple devices welcome.", "borrow-muted"),
       );
       if (["localhost", "127.0.0.1", "[::1]"].includes(new URL(joinURL).hostname)) {
         instructions.append(el("div", "For a phone, use your laptop’s LAN address as the relay URL.", "borrow-muted"));
@@ -409,18 +412,23 @@ function injectStyles() {
   const style = document.createElement("style");
   style.id = "borrow-panel-styles";
   style.textContent = `
-.borrow-panel { position:fixed;right:14px;top:14px;width:min(340px,calc(100vw - 28px));z-index:99999;
+.borrow-panel { position:fixed;right:12px;top:12px;width:min(300px,calc(100vw - 24px));z-index:99999;
   color:#e9eef7;background:#192232f2;border:1px solid #627087;border-radius:10px;
   font:13px system-ui,sans-serif;box-shadow:0 8px 24px #0006; }
-.borrow-panel summary {cursor:pointer;padding:12px;font-weight:650;}
-.borrow-body {padding:0 12px 12px;max-height:75vh;overflow:auto;}
-.borrow-muted {color:#aebbcf;font-size:12px;margin:4px 0;overflow-wrap:anywhere;}
-.borrow-slot {border-top:1px solid #485669;padding:10px 0;}
-.borrow-slot-name {font-weight:650;}
+.borrow-panel summary {cursor:pointer;padding:9px 10px;font-weight:650;}
+.borrow-body {padding:0 10px 10px;max-height:75vh;overflow:auto;}
+.borrow-muted {color:#aebbcf;font-size:12px;margin:2px 0;overflow-wrap:anywhere;}
+.borrow-body > .borrow-muted {margin:0 0 6px;}
+.borrow-slot {border-top:1px solid #485669;padding:7px 0;display:grid;
+  grid-template-columns:minmax(0,1fr) auto;gap:4px 6px;align-items:center;}
+.borrow-slot-name {font-weight:650;grid-column:1 / -1;display:flex;gap:6px;align-items:baseline;overflow-wrap:anywhere;}
+.borrow-kind {color:#aebbcf;font-size:11px;font-weight:400;}
+.borrow-slot .borrow-muted {margin:0;}
+.borrow-slot > .borrow-muted:last-child {grid-column:1 / -1;}
 .borrow-panel button,.borrow-panel select {background:#30445f;color:#fff;border:1px solid #60758e;
-  border-radius:6px;padding:6px;margin:5px 5px 0 0;max-width:100%;cursor:pointer;}
-.borrow-panel select {max-width:210px;}
-.borrow-join {border-top:1px solid #485669;padding-top:12px;display:flex;align-items:center;gap:16px;}
+  border-radius:6px;padding:4px 6px;margin:0;min-width:0;max-width:100%;font:inherit;cursor:pointer;}
+.borrow-panel select {width:100%;}
+.borrow-join {border-top:1px solid #485669;padding-top:8px;display:flex;align-items:center;gap:10px;}
 .borrow-qr {background:#fff;width:160px;flex-shrink:0;}
 .borrow-qr svg {display:block;width:100%;height:auto;shape-rendering:crispEdges;}
 .borrow-join a {color:#b1ddff;}
