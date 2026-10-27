@@ -1,7 +1,10 @@
 import p5 from "p5";
 import { createHost } from "@borrow/sdk";
 
-const borrow = createHost("Kinetic Ribbon");
+const protocol = location.protocol === "https:" ? "wss" : "ws";
+const borrow = createHost("Kinetic Ribbon", {
+  url: import.meta.env.VITE_BORROW_URL ?? `${protocol}://${location.hostname}:8000/ws`,
+});
 const bend = borrow.axis2d("bend");
 const colors = borrow.button("colors");
 window.borrowDemo = { borrow, bend, colors }; // debug

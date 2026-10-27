@@ -5,7 +5,10 @@
  * Provider: createProvider('My Phone').axis1d('tilt_x').set(0.5)
  *
  * No build step. Import this ES module from the Borrow relay's /sdk/borrow.js.
+ * Direct browser imports need an import map for qrcode-generator.
  */
+
+import qrcode from "qrcode-generator";
 
 function relayURL() {
   // When the SDK is served from the relay, the sketch need not configure a URL.
@@ -316,21 +319,33 @@ class Host extends Connection {
       body.append(row);
     }
 
-    if (this.joinURL) {
+    const joinURL = this.joinURL;
+    if (joinURL) {
       const section = el("div", "", "borrow-join");
-      const image = document.createElement("img");
-      image.src = new URL(
-        `/qr/${encodeURIComponent(this.id)}`,
-        baseURL(this.url),
-      ).href;
-      image.alt = "QR code for connecting a phone";
-      image.width = 136;
-      image.height = 136;
+      if (this._qrURL !== joinURL) {
+        const qr = qrcode(0, "M");
+        qr.addData(joinURL);
+        qr.make();
+        const image = el("div", "", "borrow-qr");
+        image.innerHTML = qr.createSvgTag({ cellSize: 4, scalable: true });
+        image.setAttribute("role", "img");
+        image.setAttribute("aria-label", "QR code for connecting a phone");
+        this._qrURL = joinURL;
+        this._qrImage = image;
+      }
       const link = el("a", "Join with phone");
-      link.href = this.joinURL;
+      link.href = joinURL;
       link.target = "_blank";
       link.rel = "noopener noreferrer";
-      section.append(image, link);
+      const instructions = el("div", "");
+      instructions.append(
+        link,
+        el("div", "Scan from one or more devices, then assign their controls above.", "borrow-muted"),
+      );
+      if (["localhost", "127.0.0.1", "[::1]"].includes(new URL(joinURL).hostname)) {
+        instructions.append(el("div", "For a phone, use your laptop’s LAN address as the relay URL.", "borrow-muted"));
+      }
+      section.append(this._qrImage, instructions);
       body.append(section);
     }
   }
@@ -406,21 +421,17 @@ function injectStyles() {
   border-radius:6px;padding:6px;margin:5px 5px 0 0;max-width:100%;cursor:pointer;}
 .borrow-panel select {max-width:210px;}
 .borrow-join {border-top:1px solid #485669;padding-top:12px;display:flex;align-items:center;gap:16px;}
-.borrow-join img {background:#fff;padding:5px;border-radius:6px;box-sizing:content-box;}
+.borrow-qr {background:#fff;width:160px;flex-shrink:0;}
+.borrow-qr svg {display:block;width:100%;height:auto;shape-rendering:crispEdges;}
 .borrow-join a {color:#b1ddff;}
 `;
   document.head.append(style);
 }
 
 export function createHost(name, options = {}) {
-  const protocol = location.protocol === "https:" ? "wss" : "ws";
-  const url = options.url ?? `${protocol}://${location.hostname}:8000/ws`;
-
-  return new Host(name, { ...options, url });
+  return new Host(name, options);
 }
 
-export function createProvider(name, options) {
-  const protocol = location.protocol === "https:" ? "wss" : "ws";
-  const url = options.url ?? `${protocol}://${location.hostname}:8000/ws`;
-  return new Provider(name, { ...options, url });
+export function createProvider(name, options = {}) {
+  return new Provider(name, options);
 }
