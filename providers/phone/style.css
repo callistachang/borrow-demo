@@ -1,0 +1,18 @@
+:root { color-scheme: dark; font: 16px/1.5 system-ui, sans-serif; color: #e9eef7; background: #192232; }
+body { margin: 0; }
+main { max-width: 440px; margin: auto; padding: 24px; }
+h1, h2 { line-height: 1.2; }
+p { color: #b8c8da; }
+label { display: block; margin-bottom: 6px; }
+input, button { box-sizing: border-box; width: 100%; padding: 12px; font: inherit;
+  color: inherit; background: #30445f; border: 1px solid #8098b5; border-radius: 8px; }
+button { margin-top: 12px; cursor: pointer; }
+button:disabled { opacity: .5; cursor: default; }
+:focus-visible { outline: 3px solid #b1ddff; outline-offset: 3px; }
+#feedback { color: #ffb9a5; }
+#touchpad { position: relative; width: 100%; aspect-ratio: 1; background: #233451;
+  border: 1px solid #8098b5; border-radius: 16px; touch-action: none; user-select: none; }
+#puck { position: absolute; left: 50%; top: 50%; width: 32px; height: 32px;
+  border-radius: 50%; background: #9ccbdc; transform: translate(-50%, -50%); pointer-events: none; }
+#press { touch-action: none; user-select: none; -webkit-user-select: none; }
+#press[data-pressed="true"] { background: #577c9b; }

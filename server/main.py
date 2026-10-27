@@ -2,11 +2,15 @@ import asyncio
 import math
 import secrets
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 app = FastAPI()
+ROOT = Path(__file__).resolve().parent.parent
 
 Kind = Literal["axis1d", "button"]
 KINDS = {"axis1d", "button"}
@@ -261,3 +265,32 @@ async def websocket_endpoint(ws: WebSocket):
 @app.get("/health")
 def health():
     return {"ok": True}
+
+
+@app.get("/api/hosts/{host_id}")
+def host_info(host_id: str):
+    host = hosts.get(host_id)
+    if host is None:
+        raise HTTPException(status_code=404, detail="Host unavailable. Scan a new QR code.")
+    return {"id": host.id, "name": host.name}
+
+
+@app.get("/join/{host_id}")
+def phone(host_id: str):
+    return FileResponse(ROOT / "providers/phone/index.html")
+
+
+@app.get("/sdk/borrow.js")
+def browser_sdk():
+    return FileResponse(ROOT / "sdk/js/index.js", media_type="text/javascript")
+
+
+@app.get("/lib/qrcode.mjs")
+def qr_library():
+    return FileResponse(
+        ROOT / "sdk/js/node_modules/qrcode-generator/dist/qrcode.mjs",
+        media_type="text/javascript",
+    )
+
+
+app.mount("/providers/phone", StaticFiles(directory=ROOT / "providers/phone"))

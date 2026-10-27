@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Borrow — share controls</title>
+  <link rel="stylesheet" href="/providers/phone/style.css">
+  <script type="importmap">
+    {"imports": {"qrcode-generator": "/lib/qrcode.mjs"}}
+  </script>
+  <script type="module" src="/providers/phone/phone.js"></script>
+</head>
+<body>
+  <main>
+    <h1>Share controls</h1>
+    <p id="target" role="status">Looking for the application…</p>
+    <label for="name">Device name</label>
+    <input id="name" maxlength="60" autocomplete="nickname">
+    <button id="share" disabled>Start sharing</button>
+    <p id="status" role="status">Not sharing.</p>
+    <p id="feedback" role="alert"></p>
+    <section id="controls" hidden>
+      <h2>Touchpad</h2>
+      <p>Shares <code>touchpad.x</code> and <code>touchpad.y</code>.
+        Drag to move; lift your finger to return to center.</p>
+      <div id="touchpad" tabindex="0" role="group" aria-label="Touchpad: drag or use arrow keys">
+        <span id="puck"></span>
+      </div>
+      <h2>Button</h2>
+      <p>Shares <code>button</code>. Hold to press, release to let go.</p>
+      <button id="press">Press and hold</button>
+      <p>Leaving this page stops sharing. Return and tap Start sharing to share again.</p>
+    </section>
+  </main>
+</body>
+</html>
