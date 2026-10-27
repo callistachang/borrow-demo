@@ -1,0 +1,15 @@
+{
+  "version": "1.0",
+  "services": {
+    "web": {
+      "port": 8000,
+      "image": "borrow-server"
+    }
+  },
+  "images": {
+    "borrow-server": {
+      "dockerfile": "server/Dockerfile",
+      "context": "server"
+    }
+  }
+}
