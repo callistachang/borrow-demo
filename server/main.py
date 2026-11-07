@@ -40,6 +40,7 @@ hosts: dict[str, Host] = {}
 providers: dict[str, Provider] = {}
 bindings: dict[tuple[str, str], tuple[str, str]] = {}
 # (host_id, slot) -> (provider_id, capability)
+state_delivery_lock = asyncio.Lock()
 
 
 def required_string(value: object) -> str:
@@ -105,11 +106,16 @@ async def try_send(peer: Peer, message: dict):
         pass  # The socket's handler will remove it when disconnected.
 
 
-async def broadcast():
+async def broadcast_locked():
     state = snapshot()
     await asyncio.gather(
         *(try_send(peer, state) for peer in [*hosts.values(), *providers.values()])
     )
+
+
+async def broadcast():
+    async with state_delivery_lock:
+        await broadcast_locked()
 
 
 def make_binding(actor: Peer, message: dict):
@@ -148,36 +154,40 @@ async def handle(peer: Peer, message: dict):
         kind = message.get("kind")
         if kind not in KINDS:
             raise ValueError("Kind must be axis1d or button")
-        declarations = peer.cap_reqs if isinstance(peer, Host) else peer.caps
-        if name in declarations and declarations[name] != kind:
-            raise ValueError("Cannot change a declared capability type")
-        declarations[name] = kind
-        if isinstance(peer, Provider):
-            peer.values.setdefault(name, default(kind))
-        await broadcast()
+        async with state_delivery_lock:
+            declarations = peer.cap_reqs if isinstance(peer, Host) else peer.caps
+            if name in declarations and declarations[name] != kind:
+                raise ValueError("Cannot change a declared capability type")
+            declarations[name] = kind
+            if isinstance(peer, Provider):
+                peer.values.setdefault(name, default(kind))
+            await broadcast_locked()
 
     # Request a snapshot of the current Borrow-Server state
     elif op == "list":
-        await send(peer, snapshot())
+        async with state_delivery_lock:
+            await send(peer, snapshot())
 
     elif op == "bind":
-        host, slot, value = make_binding(peer, message)
-        # Send the binding's initial value before yielding to the state broadcast.
-        # Host send_lock preserves this order against later provider value updates.
-        await try_send(host, {"op": "input", "slot": slot, "value": value})
-        await broadcast()
+        async with state_delivery_lock:
+            host, slot, value = make_binding(peer, message)
+            # Deliver the binding snapshot before its initial value. The shared lock
+            # keeps earlier snapshots ahead and later provider values behind both.
+            await broadcast_locked()
+            await try_send(host, {"op": "input", "slot": slot, "value": value})
 
     elif op == "unbind":
         if not isinstance(peer, Host):
             raise ValueError("Only hosts can unbind")
         slot = required_string(message.get("slot"))
-        if (peer.id, slot) in bindings:
-            del bindings[(peer.id, slot)]
-            await try_send(
-                peer,
-                {"op": "input", "slot": slot, "value": default(peer.cap_reqs[slot])},
-            )
-            await broadcast()
+        async with state_delivery_lock:
+            if (peer.id, slot) in bindings:
+                del bindings[(peer.id, slot)]
+                await try_send(
+                    peer,
+                    {"op": "input", "slot": slot, "value": default(peer.cap_reqs[slot])},
+                )
+                await broadcast_locked()
 
     elif op == "value":
         if not isinstance(peer, Provider):
@@ -186,12 +196,13 @@ async def handle(peer: Peer, message: dict):
         if capability not in peer.caps:
             raise ValueError("Unknown capability")
         value = checked_value(peer.caps[capability], message.get("value"))
-        peer.values[capability] = value
-        for (host_id, slot), source in list(bindings.items()):
-            if source == (peer.id, capability) and host_id in hosts:
-                await try_send(
-                    hosts[host_id], {"op": "input", "slot": slot, "value": value}
-                )
+        async with state_delivery_lock:
+            peer.values[capability] = value
+            for (host_id, slot), source in list(bindings.items()):
+                if source == (peer.id, capability) and host_id in hosts:
+                    await try_send(
+                        hosts[host_id], {"op": "input", "slot": slot, "value": value}
+                    )
 
     else:
         raise ValueError("Unknown operation")
@@ -218,11 +229,12 @@ async def websocket_endpoint(ws: WebSocket):
         )
 
         await send(peer, {"op": "welcome", "id": peer_id})
-        if isinstance(peer, Host):
-            hosts[peer_id] = peer
-        else:
-            providers[peer_id] = peer
-        await broadcast()
+        async with state_delivery_lock:
+            if isinstance(peer, Host):
+                hosts[peer_id] = peer
+            else:
+                providers[peer_id] = peer
+            await broadcast_locked()
 
         while True:
             message = await ws.receive_json()
@@ -238,32 +250,33 @@ async def websocket_endpoint(ws: WebSocket):
 
     finally:
         if peer is not None:
-            if isinstance(peer, Host):
-                hosts.pop(peer.id, None)
-            else:
-                providers.pop(peer.id, None)
+            async with state_delivery_lock:
+                if isinstance(peer, Host):
+                    hosts.pop(peer.id, None)
+                else:
+                    providers.pop(peer.id, None)
 
-            vacated = [
-                (target, source)
-                for target, source in bindings.items()
-                if target[0] == peer.id or source[0] == peer.id
-            ]
-            for target, source in vacated:
-                if bindings.get(target) != source:
-                    continue
-                del bindings[target]
-                # Since the provider disconnected, return host input to default value.
-                if target[0] in hosts:
-                    host = hosts[target[0]]
-                    await try_send(
-                        host,
-                        {
-                            "op": "input",
-                            "slot": target[1],
-                            "value": default(host.cap_reqs[target[1]]),
-                        },
-                    )
-            await broadcast()
+                vacated = [
+                    (target, source)
+                    for target, source in bindings.items()
+                    if target[0] == peer.id or source[0] == peer.id
+                ]
+                for target, source in vacated:
+                    if bindings.get(target) != source:
+                        continue
+                    del bindings[target]
+                    # Since the provider disconnected, return host input to default value.
+                    if target[0] in hosts:
+                        host = hosts[target[0]]
+                        await try_send(
+                            host,
+                            {
+                                "op": "input",
+                                "slot": target[1],
+                                "value": default(host.cap_reqs[target[1]]),
+                            },
+                        )
+                await broadcast_locked()
 
 
 @app.get("/health")
