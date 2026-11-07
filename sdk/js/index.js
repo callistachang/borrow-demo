@@ -33,7 +33,7 @@ function checkRelayURL(value) {
   } catch {
     throw new TypeError("Borrow relay URL must be an absolute ws:// or wss:// URL");
   }
-  if (url.protocol !== "ws:" && url.protocol !== "wss:") {
+  if ((url.protocol !== "ws:" && url.protocol !== "wss:") || !url.hostname) {
     throw new TypeError("Borrow relay URL must use ws:// or wss://");
   }
   return url.href;
@@ -70,6 +70,7 @@ class Connection {
     this.id = null;
     this.state = { op: "state", hosts: [], providers: [], bindings: [] };
     this.status = "connecting";
+    this._destroyed = false;
     this._declarations = new Map();
     this._listeners = new Set();
     this._errorListeners = new Set();
@@ -149,6 +150,11 @@ class Connection {
   _onClose() {}
 
   destroy() {
+    this._destroyed = true;
+    if (this._pendingPanelMount) {
+      document.removeEventListener("DOMContentLoaded", this._pendingPanelMount);
+      this._pendingPanelMount = null;
+    }
     this._socket.close();
   }
 }
@@ -242,7 +248,8 @@ class Host extends Connection {
 
   _mountPanel() {
     const mount = () => {
-      if (this._panel) return;
+      this._pendingPanelMount = null;
+      if (this._destroyed || this._panel) return;
       injectStyles();
       const root = document.createElement("details");
       root.className = "borrow-panel";
@@ -258,7 +265,10 @@ class Host extends Connection {
       this._renderPanel();
     };
     if (document.body) mount();
-    else document.addEventListener("DOMContentLoaded", mount, { once: true });
+    else {
+      this._pendingPanelMount = mount;
+      document.addEventListener("DOMContentLoaded", mount, { once: true });
+    }
   }
 
   _renderPanel() {

@@ -57,11 +57,12 @@ def checked_value(kind: Kind, value: object) -> float | bool:
         if type(value) is not bool:
             raise ValueError("Button value must be true or false")
         return value
-    if type(value) not in (int, float) or not math.isfinite(
-        value  # ty: ignore[invalid-argument-type]
-    ):
+    if type(value) is int:
+        # Clamp before converting: Python integers can be too large for float().
+        return float(max(-1, min(1, value)))
+    if type(value) is not float or not math.isfinite(value):
         raise ValueError("Axis value must be a finite number")
-    return max(-1.0, min(1.0, float(value)))  # ty: ignore[invalid-argument-type]
+    return max(-1.0, min(1.0, value))
 
 
 def snapshot() -> dict:
@@ -121,8 +122,8 @@ def make_binding(actor: Peer, message: dict):
     provider = providers.get(provider_id)
     if host is None or provider is None:
         raise ValueError("Unknown host or provider")
-    if actor.id not in (host_id, provider_id):
-        raise ValueError("Only the host or provider may request a binding")
+    if not isinstance(actor, Host) or actor.id != host_id:
+        raise ValueError("Only the host may approve a binding")
     if slot not in host.cap_reqs or capability not in provider.caps:
         raise ValueError("Unknown slot or capability")
     if host.cap_reqs[slot] != provider.caps[capability]:
@@ -161,8 +162,10 @@ async def handle(peer: Peer, message: dict):
 
     elif op == "bind":
         host, slot, value = make_binding(peer, message)
-        await broadcast()
+        # Send the binding's initial value before yielding to the state broadcast.
+        # Host send_lock preserves this order against later provider value updates.
         await try_send(host, {"op": "input", "slot": slot, "value": value})
+        await broadcast()
 
     elif op == "unbind":
         if not isinstance(peer, Host):
@@ -241,13 +244,14 @@ async def websocket_endpoint(ws: WebSocket):
                 providers.pop(peer.id, None)
 
             vacated = [
-                (host_id, slot)
-                for (host_id, slot), (provider_id, _) in bindings.items()
-                if host_id == peer.id or provider_id == peer.id
+                (target, source)
+                for target, source in bindings.items()
+                if target[0] == peer.id or source[0] == peer.id
             ]
-            for target in vacated:
-                if bindings.pop(target, None) is None:
+            for target, source in vacated:
+                if bindings.get(target) != source:
                     continue
+                del bindings[target]
                 # Since the provider disconnected, return host input to default value.
                 if target[0] in hosts:
                     host = hosts[target[0]]
