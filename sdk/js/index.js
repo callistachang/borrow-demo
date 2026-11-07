@@ -26,6 +26,19 @@ function baseURL(wsURL) {
   return url;
 }
 
+function checkRelayURL(value) {
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new TypeError("Borrow relay URL must be an absolute ws:// or wss:// URL");
+  }
+  if (url.protocol !== "ws:" && url.protocol !== "wss:") {
+    throw new TypeError("Borrow relay URL must use ws:// or wss://");
+  }
+  return url.href;
+}
+
 function checkName(name) {
   if (typeof name !== "string" || !name.trim()) {
     throw new Error("Borrow names must be nonempty strings");
@@ -53,7 +66,7 @@ class Connection {
   constructor(role, name, { url } = {}) {
     this.role = role;
     this.name = checkName(name);
-    this.url = url ?? relayURL();
+    this.url = checkRelayURL(url ?? relayURL());
     this.id = null;
     this.state = { op: "state", hosts: [], providers: [], bindings: [] };
     this.status = "connecting";
