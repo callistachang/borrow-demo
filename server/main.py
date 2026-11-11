@@ -1,6 +1,7 @@
 import asyncio
 import math
 import secrets
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -9,7 +10,19 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app):
+    discovery = getattr(app.state, "discovery", None)
+    try:
+        if discovery:
+            await discovery.start()
+        yield
+    finally:
+        if discovery:
+            await discovery.close()
+
+
+app = FastAPI(lifespan=lifespan)
 ROOT = Path(__file__).resolve().parent.parent
 
 Kind = Literal["axis1d", "button"]
@@ -282,6 +295,20 @@ async def websocket_endpoint(ws: WebSocket):
 @app.get("/health")
 def health():
     return {"ok": True}
+
+
+@app.get("/api/node")
+async def node_info():
+    discovery = getattr(app.state, "discovery", None)
+    return {"discovery_enabled": discovery is not None,
+            "node": discovery.local_snapshot() if discovery else None}
+
+
+@app.get("/api/nodes")
+async def nearby_nodes():
+    discovery = getattr(app.state, "discovery", None)
+    return {"discovery_enabled": discovery is not None,
+            "nodes": discovery.snapshot() if discovery else []}
 
 
 @app.get("/api/hosts/{host_id}")

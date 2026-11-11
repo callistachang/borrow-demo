@@ -13,7 +13,7 @@ WORKDIR /app/server
 COPY server/pyproject.toml server/uv.lock ./
 RUN uv sync --locked --no-dev --no-install-project
 
-COPY server/main.py ./
+COPY server/main.py server/discovery.py server/borrow.py ./
 COPY --from=sdk-dependencies /sdk /app/sdk/js
 COPY sdk/js/index.js /app/sdk/js/index.js
 COPY providers/phone /app/providers/phone

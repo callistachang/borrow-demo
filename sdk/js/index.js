@@ -366,7 +366,7 @@ class Host extends Connection {
       const instructions = el("div", "");
       instructions.append(
         link,
-        el("div", "Scan a device, then assign its controls above. Multiple devices welcome.", "borrow-muted"),
+        el("div", "", "borrow-muted"),
       );
       if (["localhost", "127.0.0.1", "[::1]"].includes(new URL(joinURL).hostname)) {
         instructions.append(el("div", "For a phone, use your laptop’s LAN address as the relay URL.", "borrow-muted"));
